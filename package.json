@@ -1,0 +1,16 @@
+{
+  "name": "torrent-streamer",
+  "version": "1.0.0",
+  "description": "Server-side torrent client that re-serves files over HTTP with range support for browser streaming",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "webtorrent": "^2.5.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
