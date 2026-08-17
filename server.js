@@ -1,5 +1,5 @@
 import express from 'express';
-   import WebTorrent from 'webtorrent';
+import WebTorrent from 'webtorrent';
 
 const app = express();
 const client = new WebTorrent();
@@ -27,11 +27,19 @@ function torrentInfo(torrent) {
   };
 }
 
+// A real magnet link's infohash is exactly 40 hex chars (or 32 base32 chars).
+// Anything else (typos, trailing punctuation, truncated copy-paste) gets rejected
+// here instead of being handed to WebTorrent, which crashes hard on bad input.
+const MAGNET_PATTERN = /^magnet:\?.*xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})/;
+
 // Start (or fetch status of) a torrent from a magnet link
 app.post('/api/add', (req, res) => {
-  const { magnet } = req.body;
-  if (!magnet || !magnet.startsWith('magnet:')) {
-    return res.status(400).json({ error: 'Valid magnet link required' });
+  const magnet = (req.body.magnet || '').trim();
+
+  if (!MAGNET_PATTERN.test(magnet)) {
+    return res.status(400).json({
+      error: 'That magnet link looks malformed. It must contain "xt=urn:btih:" followed by a 40-character hex (or 32-character base32) hash, with no extra characters after it. Copy it directly from its source rather than typing/editing it by hand.'
+    });
   }
 
   const existing = client.torrents.find(t => t.magnetURI === magnet);
@@ -47,14 +55,43 @@ app.post('/api/add', (req, res) => {
     }
   }, 15000);
 
-  client.add(magnet, { path: '/tmp/webtorrent-streamer' }, (torrent) => {
-    activeTorrents.set(torrent.infoHash, torrent);
+  try {
+    const torrent = client.add(magnet, { path: '/tmp/webtorrent-streamer' });
+
+    torrent.on('error', (err) => {
+      clearTimeout(timeout);
+      console.error('Torrent error:', err.message);
+      if (!responded) {
+        responded = true;
+        res.status(422).json({ error: 'This torrent could not be loaded: ' + err.message });
+      }
+    });
+
+    torrent.on('ready', () => {
+      activeTorrents.set(torrent.infoHash, torrent);
+      clearTimeout(timeout);
+      if (!responded) {
+        responded = true;
+        res.json(torrentInfo(torrent));
+      }
+    });
+  } catch (err) {
     clearTimeout(timeout);
+    console.error('client.add threw:', err.message);
     if (!responded) {
       responded = true;
-      res.json(torrentInfo(torrent));
+      res.status(422).json({ error: 'This magnet link could not be parsed: ' + err.message });
     }
-  });
+  }
+});
+
+// Catch-all so one bad torrent's internal error never takes the whole server down
+client.on('error', (err) => {
+  console.error('WebTorrent client error (non-fatal):', err.message);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception (server staying alive):', err.message);
 });
 
 // Poll current progress / peer count / file list
