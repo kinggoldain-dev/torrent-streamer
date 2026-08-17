@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Swarmcast</title>
+<style>
+  :root{
+    --bg:#0a0e14;
+    --panel:#111721;
+    --line:#1e2733;
+    --text:#dbe4ee;
+    --dim:#5f7286;
+    --accent:#3ee6c4;
+    --accent-dim:#1f4a42;
+    --warn:#ff8a5c;
+    --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+    --sans:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    min-height:100vh;
+    padding:32px 16px 80px;
+  }
+  .wrap{max-width:840px;margin:0 auto;}
+
+  header{margin-bottom:28px;}
+  .brand{
+    font-family:var(--mono);
+    font-size:13px;
+    letter-spacing:.14em;
+    color:var(--accent);
+    text-transform:uppercase;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .brand::before{
+    content:'';
+    width:7px;height:7px;border-radius:50%;
+    background:var(--accent);
+    box-shadow:0 0 8px var(--accent);
+  }
+  h1{
+    font-size:28px;
+    font-weight:600;
+    margin:10px 0 4px;
+    letter-spacing:-.01em;
+  }
+  .sub{color:var(--dim);font-size:14px;line-height:1.5;max-width:560px;}
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:20px;
+    margin-top:20px;
+  }
+
+  .input-row{display:flex;gap:10px;}
+  input[type=text]{
+    flex:1;
+    background:#0d131c;
+    border:1px solid var(--line);
+    color:var(--text);
+    font-family:var(--mono);
+    font-size:13px;
+    padding:13px 14px;
+    border-radius:7px;
+    outline:none;
+    transition:border-color .15s;
+  }
+  input[type=text]:focus{border-color:var(--accent);}
+  input[type=text]::placeholder{color:var(--dim);}
+
+  button{
+    background:var(--accent);
+    color:#04241d;
+    border:none;
+    font-family:var(--sans);
+    font-weight:600;
+    font-size:13px;
+    padding:0 22px;
+    border-radius:7px;
+    cursor:pointer;
+    transition:filter .15s, transform .1s;
+  }
+  button:hover{filter:brightness(1.08);}
+  button:active{transform:scale(.98);}
+  button:disabled{background:var(--line);color:var(--dim);cursor:not-allowed;}
+
+  .status-line{
+    display:flex;
+    justify-content:space-between;
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--dim);
+    margin-top:14px;
+    flex-wrap:wrap;
+    gap:8px 20px;
+  }
+  .status-line span b{color:var(--text);font-weight:600;}
+  .status-line .live b{color:var(--accent);}
+
+  .bar-track{
+    height:4px;
+    background:var(--line);
+    border-radius:2px;
+    margin-top:12px;
+    overflow:hidden;
+  }
+  .bar-fill{
+    height:100%;
+    background:var(--accent);
+    width:0%;
+    transition:width .4s ease;
+  }
+
+  .files{margin-top:16px;display:flex;flex-direction:column;gap:6px;}
+  .file-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 12px;
+    background:#0d131c;
+    border:1px solid var(--line);
+    border-radius:7px;
+    font-size:13px;
+  }
+  .file-row.playable:hover{border-color:var(--accent);cursor:pointer;}
+  .file-name{font-family:var(--mono);font-size:12px;color:var(--text);word-break:break-all;padding-right:12px;}
+  .file-meta{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+  .tag{
+    font-family:var(--mono);
+    font-size:10px;
+    padding:3px 7px;
+    border-radius:4px;
+    letter-spacing:.04em;
+  }
+  .tag.ok{background:var(--accent-dim);color:var(--accent);}
+  .tag.warn{background:#3a2418;color:var(--warn);}
+
+  video{
+    width:100%;
+    border-radius:10px;
+    margin-top:20px;
+    background:#000;
+    display:none;
+  }
+
+  .msg{
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--dim);
+    margin-top:12px;
+    line-height:1.6;
+  }
+  .msg.error{color:var(--warn);}
+
+  footer{
+    margin-top:36px;
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--dim);
+    border-top:1px solid var(--line);
+    padding-top:16px;
+    line-height:1.7;
+  }
+  footer code{color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">peer-to-http bridge</div>
+    <h1>Swarmcast</h1>
+    <p class="sub">Paste a magnet link. The backend joins the swarm over real BitTorrent, this page just plays the HTTP stream it produces.</p>
+  </header>
+
+  <div class="panel">
+    <div class="input-row">
+      <input type="text" id="magnetInput" placeholder="magnet:?xt=urn:btih:..." autocomplete="off" spellcheck="false">
+      <button id="loadBtn">Load</button>
+    </div>
+
+    <div class="status-line" id="statusLine" style="display:none;">
+      <span class="live">peers <b id="peerCount">0</b></span>
+      <span>speed <b id="speedVal">0 KB/s</b></span>
+      <span>progress <b id="progressVal">0%</b></span>
+    </div>
+    <div class="bar-track" id="barTrack" style="display:none;"><div class="bar-fill" id="barFill"></div></div>
+
+    <div class="files" id="fileList"></div>
+    <div class="msg" id="msg"></div>
+
+    <video id="player" controls></video>
+  </div>
+
+  <footer>
+    Backend endpoint expected: <code>/api/add</code> (POST magnet), <code>/api/status/:infoHash</code>, <code>/stream/:infoHash/:fileIndex</code>.<br>
+    Point <code>API_BASE</code> below at your Replit URL if the frontend isn't served from the same origin as the backend.
+  </footer>
+</div>
+
+<script>
+// If you deploy this HTML separately from the Node backend, set the full
+// Replit URL here, e.g. 'https://your-repl-name.username.repl.co'
+const API_BASE = '';
+
+const magnetInput = document.getElementById('magnetInput');
+const loadBtn = document.getElementById('loadBtn');
+const statusLine = document.getElementById('statusLine');
+const peerCount = document.getElementById('peerCount');
+const speedVal = document.getElementById('speedVal');
+const progressVal = document.getElementById('progressVal');
+const barTrack = document.getElementById('barTrack');
+const barFill = document.getElementById('barFill');
+const fileList = document.getElementById('fileList');
+const msg = document.getElementById('msg');
+const player = document.getElementById('player');
+
+let pollTimer = null;
+let currentHash = null;
+
+function setMsg(text, isError=false){
+  msg.textContent = text;
+  msg.className = 'msg' + (isError ? ' error' : '');
+}
+
+function fmtSpeed(bytesPerSec){
+  if(bytesPerSec > 1024*1024) return (bytesPerSec/1024/1024).toFixed(1) + ' MB/s';
+  return (bytesPerSec/1024).toFixed(0) + ' KB/s';
+}
+
+async function loadMagnet(){
+  const magnet = magnetInput.value.trim();
+  if(!magnet.startsWith('magnet:')){
+    setMsg('That doesn\'t look like a magnet link.', true);
+    return;
+  }
+
+  loadBtn.disabled = true;
+  setMsg('Connecting to swarm — this can take a few seconds while peers are found...');
+  statusLine.style.display = 'flex';
+  barTrack.style.display = 'block';
+  fileList.innerHTML = '';
+  player.style.display = 'none';
+
+  try {
+    const res = await fetch(API_BASE + '/api/add', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ magnet })
+    });
+    const data = await res.json();
+
+    if(!res.ok && res.status !== 202){
+      setMsg(data.error || 'Failed to load magnet.', true);
+      loadBtn.disabled = false;
+      return;
+    }
+
+    if(data.infoHash){
+      currentHash = data.infoHash;
+      renderStatus(data);
+      startPolling();
+    } else {
+      setMsg('Still resolving metadata — waiting for peers...');
+      setTimeout(loadMagnet, 3000);
+    }
+  } catch(err){
+    setMsg('Could not reach backend at ' + (API_BASE || '(same origin)') + '. Is the server running?', true);
+  } finally {
+    loadBtn.disabled = false;
+  }
+}
+
+function startPolling(){
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    if(!currentHash) return;
+    try {
+      const res = await fetch(API_BASE + '/api/status/' + currentHash);
+      const data = await res.json();
+      if(res.ok) renderStatus(data);
+    } catch(e){ /* silent retry */ }
+  }, 2000);
+}
+
+function renderStatus(data){
+  peerCount.textContent = data.numPeers ?? 0;
+  speedVal.textContent = fmtSpeed(data.downloadSpeed || 0);
+  const pct = Math.round((data.progress || 0) * 100);
+  progressVal.textContent = pct + '%';
+  barFill.style.width = pct + '%';
+
+  if(data.files && data.files.length){
+    fileList.innerHTML = '';
+    data.files.forEach(f => {
+      const row = document.createElement('div');
+      row.className = 'file-row' + (f.likelyPlayable ? ' playable' : '');
+      row.innerHTML = `
+        <span class="file-name">${f.name}</span>
+        <span class="file-meta">
+          <span class="tag ${f.likelyPlayable ? 'ok' : 'warn'}">${f.likelyPlayable ? 'PLAYABLE' : 'MAY NOT PLAY'}</span>
+        </span>`;
+      row.addEventListener('click', () => playFile(f.index, f.likelyPlayable));
+      fileList.appendChild(row);
+    });
+    setMsg('');
+  }
+}
+
+function playFile(index, likelyPlayable){
+  if(!currentHash) return;
+  const url = API_BASE + '/stream/' + currentHash + '/' + index;
+  player.src = url;
+  player.style.display = 'block';
+  player.play().catch(()=>{});
+  if(!likelyPlayable){
+    setMsg('This file\'s format may not play natively in your browser (codec/container limitation).', true);
+  } else {
+    setMsg('');
+  }
+}
+
+loadBtn.addEventListener('click', loadMagnet);
+magnetInput.addEventListener('keydown', e => { if(e.key === 'Enter') loadMagnet(); });
+</script>
+</body>
+</html>
