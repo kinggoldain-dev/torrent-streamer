@@ -1,5 +1,5 @@
-const express = require('express');
-const WebTorrent = require('webtorrent');
+import express from 'express';
+   import WebTorrent from 'webtorrent';
 
 const app = express();
 const client = new WebTorrent();
